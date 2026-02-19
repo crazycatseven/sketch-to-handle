@@ -34,8 +34,12 @@ const useStore = create((set) => ({
   setSmoothLevel: (v) => set({ smoothLevel: v }),
 
   // Physical parameters
-  handleHeightM: 0.08,
+  handleHeightM: 0.12,
   setHandleHeightM: (v) => set({ handleHeightM: v }),
+  handleWidthScale: 1.0,
+  setHandleWidthScale: (v) => set({ handleWidthScale: v }),
+  padWidthScale: 1.0,
+  setPadWidthScale: (v) => set({ padWidthScale: v }),
   cupTopDiameterMm: 50,
   setCupTopDiameterMm: (v) => set({ cupTopDiameterMm: v }),
   cupBottomDiameterMm: 50,

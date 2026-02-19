@@ -3,6 +3,10 @@ import useStore from '../store'
 export default function ParameterPanel() {
   const handleHeightM = useStore(s => s.handleHeightM)
   const setHandleHeightM = useStore(s => s.setHandleHeightM)
+  const handleWidthScale = useStore(s => s.handleWidthScale)
+  const setHandleWidthScale = useStore(s => s.setHandleWidthScale)
+  const padWidthScale = useStore(s => s.padWidthScale)
+  const setPadWidthScale = useStore(s => s.setPadWidthScale)
   const cupTopDiameterMm = useStore(s => s.cupTopDiameterMm)
   const setCupTopDiameterMm = useStore(s => s.setCupTopDiameterMm)
   const cupBottomDiameterMm = useStore(s => s.cupBottomDiameterMm)
@@ -16,6 +20,8 @@ export default function ParameterPanel() {
 
   const sliders = [
     { label: 'Handle Height', value: handleHeightM, set: setHandleHeightM, min: 0.02, max: 0.5, step: 0.005, unit: 'm' },
+    { label: 'Handle Width', value: handleWidthScale, set: setHandleWidthScale, min: 0.6, max: 2.0, step: 0.05, unit: 'x' },
+    { label: 'Pad Width', value: padWidthScale, set: setPadWidthScale, min: 0.6, max: 2.0, step: 0.05, unit: 'x' },
     { label: 'Top Diameter', value: cupTopDiameterMm, set: setCupTopDiameterMm, min: 30, max: 150, unit: 'mm' },
     { label: 'Bottom Dia.', value: cupBottomDiameterMm, set: setCupBottomDiameterMm, min: 30, max: 150, unit: 'mm' },
     { label: 'Filled Weight', value: filledWeightG, set: setFilledWeightG, min: 50, max: 1500, unit: 'g' },

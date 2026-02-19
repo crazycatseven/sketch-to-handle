@@ -74,7 +74,7 @@ export function autoDimensions(handleHeightMm) {
   return {
     // Slightly denser sampling improves visual smoothness of the tube.
     resampleStepMm: Math.max(0.6, 1.15 * scale),
-    baseGripRadiusMm: Math.max(3.2, 4.2 * scale),
+    baseGripRadiusMm: Math.max(3.2, 5.0 * scale),
     basePadThicknessMm: Math.max(2.4, 3.0 * scale),
   }
 }
@@ -242,8 +242,12 @@ function radiusProfileAlongPath(pathPoints, gripRadiusMm, rootRadiusMm) {
 export function computeMechanicalDesign(
   pathPoints, rawPoints, handleHeightMm,
   cupTopDiameterMm, cupBottomDiameterMm,
-  filledWeightG, targetSafetyFactor, baseDims
+  filledWeightG, targetSafetyFactor, baseDims,
+  handleWidthScale = 1.0, padWidthScale = 1.0,
 ) {
+  const safeHandleWidthScale = clamp(Number(handleWidthScale) || 1.0, 0.5, 2.8)
+  const safePadWidthScale = clamp(Number(padWidthScale) || 1.0, 0.5, 2.8)
+
   const massKg = filledWeightG / 1000.0
   const leverArmMm = Math.max(Math.max(...pathPoints.map(p => p[0])), 6.0)
   const endpointSpanMm = Math.max(
@@ -270,7 +274,7 @@ export function computeMechanicalDesign(
     )
   }
 
-  const gripRadiusMm = baseDims.baseGripRadiusMm
+  const gripRadiusMm = Math.max(2.6, baseDims.baseGripRadiusMm * safeHandleWidthScale)
   const rootRadiusMm = Math.max(requiredRootRadiusM * 1000.0, gripRadiusMm * 1.12)
   const tubeRadiiMm = radiusProfileAlongPath(pathPoints, gripRadiusMm, rootRadiusMm)
 
@@ -304,7 +308,8 @@ export function computeMechanicalDesign(
 
   const scale = clamp(handleHeightMm / 120.0, 0.55, 2.4)
   const basePadDiameterMm = Math.max(rootRadiusMm * 4.0, 16.0 * scale)
-  const idealPadDiameterMm = Math.max(requiredPadDiameterMm, basePadDiameterMm)
+  const autoPadDiameterMm = Math.max(requiredPadDiameterMm, basePadDiameterMm)
+  const idealPadDiameterMm = Math.max(8.0, autoPadDiameterMm * safePadWidthScale)
 
   const curvatureFitLimitMm = Math.min(...localDiametersMm) * 0.88
   const padDiameterMm = Math.min(idealPadDiameterMm, curvatureFitLimitMm)
@@ -633,6 +638,8 @@ export function generateTubularHandle(strokePoints, params = {}) {
     imageWidthPx = 1000,
     imageHeightPx = 1000,
     handleHeightM = 0.12,
+    handleWidthScale = 1.0,
+    padWidthScale = 1.0,
     cupTopDiameterMm = 80,
     cupBottomDiameterMm = 65,
     filledWeightG = 450,
@@ -682,6 +689,7 @@ export function generateTubularHandle(strokePoints, params = {}) {
     pathPoints, rawPoints, handleHeightMm,
     cupTopDiameterMm, cupBottomDiameterMm,
     filledWeightG, targetSafetyFactor, baseDims,
+    handleWidthScale, padWidthScale,
   )
 
   // Mesh-only adjustment:

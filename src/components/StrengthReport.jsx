@@ -9,6 +9,8 @@ export default function StrengthReport() {
 
   const smoothLevel = useStore(s => s.smoothLevel)
   const handleHeightM = useStore(s => s.handleHeightM)
+  const handleWidthScale = useStore(s => s.handleWidthScale)
+  const padWidthScale = useStore(s => s.padWidthScale)
   const cupTopDiameterMm = useStore(s => s.cupTopDiameterMm)
   const cupBottomDiameterMm = useStore(s => s.cupBottomDiameterMm)
   const filledWeightG = useStore(s => s.filledWeightG)
@@ -26,6 +28,8 @@ export default function StrengthReport() {
         imageWidthPx: image?.width || 1000,
         imageHeightPx: image?.height || 1000,
         handleHeightM,
+        handleWidthScale,
+        padWidthScale,
         cupTopDiameterMm,
         cupBottomDiameterMm,
         filledWeightG,
@@ -40,6 +44,8 @@ export default function StrengthReport() {
     inputStroke,
     image,
     handleHeightM,
+    handleWidthScale,
+    padWidthScale,
     cupTopDiameterMm,
     cupBottomDiameterMm,
     filledWeightG,
