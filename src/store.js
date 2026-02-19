@@ -1,37 +1,44 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 
-const useStore = create((set, get) => ({
+const useStore = create((set) => ({
   // Image
   image: null,
   setImage: (img) => set({ image: img }),
 
-  // Strokes — each stroke is [{x,y}, ...] (normalized 0-1)
-  strokes: [],
-  currentStroke: [],
-  addPoint: (pt) => set((s) => ({ currentStroke: [...s.currentStroke, pt] })),
-  finishStroke: () => set((s) => {
-    if (s.currentStroke.length < 2) return { currentStroke: [] }
-    return { strokes: [...s.strokes, s.currentStroke], currentStroke: [] }
+  // Bezier anchor points (normalized 0-1)
+  curvePoints: [],
+  addCurvePoint: (pt) => set((s) => ({ curvePoints: [...s.curvePoints, pt] })),
+  insertCurvePoint: (index, pt) => set((s) => {
+    const i = Math.max(0, Math.min(index, s.curvePoints.length))
+    const next = s.curvePoints.slice()
+    next.splice(i, 0, pt)
+    return { curvePoints: next }
   }),
-  undoStroke: () => set((s) => ({ strokes: s.strokes.slice(0, -1) })),
-  clearStrokes: () => set({ strokes: [], currentStroke: [] }),
-
-  // Drawing tool
-  tool: 'pen',
-  setTool: (t) => set({ tool: t }),
-  lineWidth: 4,
-  setLineWidth: (w) => set({ lineWidth: w }),
+  removeCurvePoint: (index) => set((s) => {
+    if (index < 0 || index >= s.curvePoints.length) return {}
+    const next = s.curvePoints.slice()
+    next.splice(index, 1)
+    return { curvePoints: next }
+  }),
+  updateCurvePoint: (index, pt) => set((s) => {
+    if (index < 0 || index >= s.curvePoints.length) return {}
+    const next = s.curvePoints.slice()
+    next[index] = pt
+    return { curvePoints: next }
+  }),
+  undoCurvePoint: () => set((s) => ({ curvePoints: s.curvePoints.slice(0, -1) })),
+  clearCurvePoints: () => set({ curvePoints: [] }),
 
   // Path smoothing
   smoothLevel: 3,
   setSmoothLevel: (v) => set({ smoothLevel: v }),
 
-  // Cup physical parameters
-  cupHeightMm: 120,
-  setCupHeightMm: (v) => set({ cupHeightMm: v }),
-  cupTopDiameterMm: 80,
+  // Physical parameters
+  handleHeightM: 0.08,
+  setHandleHeightM: (v) => set({ handleHeightM: v }),
+  cupTopDiameterMm: 50,
   setCupTopDiameterMm: (v) => set({ cupTopDiameterMm: v }),
-  cupBottomDiameterMm: 65,
+  cupBottomDiameterMm: 50,
   setCupBottomDiameterMm: (v) => set({ cupBottomDiameterMm: v }),
   filledWeightG: 450,
   setFilledWeightG: (v) => set({ filledWeightG: v }),
@@ -44,3 +51,4 @@ const useStore = create((set, get) => ({
 }))
 
 export default useStore
+

@@ -36,8 +36,13 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
 .content-grid {
   flex: 1; display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 62% minmax(0, 1fr);
   min-height: 0; min-width: 0;
+}
+
+.content-grid > * {
+  min-height: 0;
+  min-width: 0;
 }
 
 /* Top-left: Canvas */
@@ -53,6 +58,19 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
   font-size: 15px; gap: 8px; transition: background .2s;
 }
 .drop-zone:hover { background: rgba(0,188,212,.06); }
+.canvas-metric {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
 
 /* Top-right: 3D Preview */
 .cell-3d {

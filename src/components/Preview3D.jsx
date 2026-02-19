@@ -3,23 +3,31 @@ import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Html } from '@react-three/drei'
 import useStore from '../store'
 import { generateTubularHandle } from '../utils/tubularHandleGenerator'
+import { sampleBezierSpline } from '../utils/bezierPath'
 
 function HandleScene() {
-  const strokes = useStore(s => s.strokes)
+  const image = useStore(s => s.image)
+  const curvePoints = useStore(s => s.curvePoints)
+
   const smoothLevel = useStore(s => s.smoothLevel)
-  const cupHeightMm = useStore(s => s.cupHeightMm)
+  const handleHeightM = useStore(s => s.handleHeightM)
   const cupTopDiameterMm = useStore(s => s.cupTopDiameterMm)
   const cupBottomDiameterMm = useStore(s => s.cupBottomDiameterMm)
   const filledWeightG = useStore(s => s.filledWeightG)
   const targetSafetyFactor = useStore(s => s.targetSafetyFactor)
 
-  const lastStroke = strokes.length > 0 ? strokes[strokes.length - 1] : null
+  const inputStroke = useMemo(() => {
+    if (curvePoints.length < 2) return null
+    return sampleBezierSpline(curvePoints, 36)
+  }, [curvePoints])
 
   const result = useMemo(() => {
-    if (!lastStroke || lastStroke.length < 2) return null
+    if (!inputStroke || inputStroke.length < 2) return null
     try {
-      return generateTubularHandle(lastStroke, {
-        cupHeightMm,
+      return generateTubularHandle(inputStroke, {
+        imageWidthPx: image?.width || 1000,
+        imageHeightPx: image?.height || 1000,
+        handleHeightM,
         cupTopDiameterMm,
         cupBottomDiameterMm,
         filledWeightG,
@@ -30,8 +38,16 @@ function HandleScene() {
       console.warn('Handle generation failed:', e.message)
       return null
     }
-  }, [lastStroke, cupHeightMm, cupTopDiameterMm, cupBottomDiameterMm,
-      filledWeightG, targetSafetyFactor, smoothLevel])
+  }, [
+    inputStroke,
+    image,
+    handleHeightM,
+    cupTopDiameterMm,
+    cupBottomDiameterMm,
+    filledWeightG,
+    targetSafetyFactor,
+    smoothLevel,
+  ])
 
   useEffect(() => {
     if (result?.group) {
@@ -45,6 +61,7 @@ function HandleScene() {
       window.__handleMeshes = []
       window.__strengthReport = null
     }
+
     return () => {
       window.__handleMeshes = []
       window.__strengthReport = null
@@ -55,7 +72,9 @@ function HandleScene() {
     return (
       <Html center>
         <div style={{ color: '#aaa', fontSize: 14, textAlign: 'center', userSelect: 'none' }}>
-          Draw a handle curve on the photo<br />to generate a 3D handle
+          Draw a handle curve on the photo
+          <br />
+          to generate a 3D handle
         </div>
       </Html>
     )

@@ -66,13 +66,12 @@ function interp1d(targets, xp, fp) {
 // ─── Geometry helpers ───
 
 /**
- * Auto-scale dimensions based on cup height.
+ * Auto-scale dimensions based on handle height.
  * Port of _auto_dimensions (app.py:84-91)
  */
-export function autoDimensions(cupHeightMm) {
-  const scale = clamp(cupHeightMm / 120.0, 0.55, 2.4)
+export function autoDimensions(handleHeightMm) {
+  const scale = clamp(handleHeightMm / 120.0, 0.55, 2.4)
   return {
-    projectionMm: 34.0 * scale,
     // Slightly denser sampling improves visual smoothness of the tube.
     resampleStepMm: Math.max(0.6, 1.15 * scale),
     baseGripRadiusMm: Math.max(3.2, 4.2 * scale),
@@ -94,28 +93,30 @@ function localCupDiameterMm(cupTopDiameterMm, cupBottomDiameterMm, y01) {
  * Port of _normalize_points (app.py:49-74)
  *
  * @param {Array} rawPoints - [[x01, y01], ...] normalized 0-1
- * @param {number} cupHeightMm
- * @param {number} projectionMm - max lateral displacement
+ * @param {number} imageWidthPx
+ * @param {number} imageHeightPx
+ * @param {number} mmPerPixel
  * @returns {Array} [[x, 0, z], ...] in mm
  */
-export function normalizePoints(rawPoints, cupHeightMm, projectionMm) {
+export function normalizePoints(rawPoints, imageWidthPx, imageHeightPx, mmPerPixel) {
   if (rawPoints.length < 2) throw new Error('Need at least 2 points')
 
   const n = rawPoints.length
 
-  // Z = vertical (cup height direction)
+  const mmPerPx = Math.max(0.001, mmPerPixel)
+
+  // Z uses image pixel vertical scale directly.
   const zMm = new Float64Array(n)
   for (let i = 0; i < n; i++) {
-    zMm[i] = (rawPoints[0][1] - rawPoints[i][1]) * cupHeightMm
+    zMm[i] = (0.5 - rawPoints[i][1]) * imageHeightPx * mmPerPx
   }
-  zMm[0] = 0
 
-  // X = lateral deviation from baseline
+  // X = lateral deviation from baseline, scaled with the same mm/px.
   const xRel = new Float64Array(n)
   for (let i = 0; i < n; i++) {
     const t = i / (n - 1)
     const baseline = rawPoints[0][0] + (rawPoints[n - 1][0] - rawPoints[0][0]) * t
-    xRel[i] = rawPoints[i][0] - baseline
+    xRel[i] = (rawPoints[i][0] - baseline) * imageWidthPx
   }
 
   let maxAbs = 0
@@ -129,10 +130,11 @@ export function normalizePoints(rawPoints, cupHeightMm, projectionMm) {
 
   const result = []
   for (let i = 0; i < n; i++) {
-    let xMm = (xRel[i] / maxAbs) * projectionMm
+    let xMm = xRel[i] * mmPerPx
     if (i === 0 || i === n - 1) xMm = 0
     result.push([xMm, 0, zMm[i]])
   }
+
   return result
 }
 
@@ -238,7 +240,7 @@ function radiusProfileAlongPath(pathPoints, gripRadiusMm, rootRadiusMm) {
  * Port of _compute_mechanical_design (app.py:112-225)
  */
 export function computeMechanicalDesign(
-  pathPoints, rawPoints, cupHeightMm,
+  pathPoints, rawPoints, handleHeightMm,
   cupTopDiameterMm, cupBottomDiameterMm,
   filledWeightG, targetSafetyFactor, baseDims
 ) {
@@ -300,7 +302,7 @@ export function computeMechanicalDesign(
   }
   const requiredPadDiameterMm = 2.0 * Math.sqrt((requiredPadAreaM2 * 1_000_000.0) / Math.PI)
 
-  const scale = clamp(cupHeightMm / 120.0, 0.55, 2.4)
+  const scale = clamp(handleHeightMm / 120.0, 0.55, 2.4)
   const basePadDiameterMm = Math.max(rootRadiusMm * 4.0, 16.0 * scale)
   const idealPadDiameterMm = Math.max(requiredPadDiameterMm, basePadDiameterMm)
 
@@ -331,7 +333,7 @@ export function computeMechanicalDesign(
   if (adhesiveSf < targetSafetyFactor) notes.push('Adhesive pad area is below target holdability safety factor.')
   if (endpointSpanMm < 28.0) notes.push('Vertical distance between two pads is small; torque load per pad increases.')
   if ((rootRadiusMm / Math.max(gripRadiusMm, 1e-6)) > 1.85) notes.push('Root is much thicker than grip area; handle comfort may decrease.')
-  if (pathLengthMm < 0.34 * cupHeightMm) notes.push('Handle path is short relative to cup height; gripping space may be limited.')
+  if (pathLengthMm < 0.34 * handleHeightMm) notes.push('Handle path is short relative to handle height; gripping space may be limited.')
   if (padDiameterMm > Math.min(...localDiametersMm) * 0.84) notes.push('Pad diameter is close to local cup diameter limit; fit margin is low.')
 
   return {
@@ -628,7 +630,9 @@ export function buildStrengthReport(design) {
  */
 export function generateTubularHandle(strokePoints, params = {}) {
   const {
-    cupHeightMm = 120,
+    imageWidthPx = 1000,
+    imageHeightPx = 1000,
+    handleHeightM = 0.12,
     cupTopDiameterMm = 80,
     cupBottomDiameterMm = 65,
     filledWeightG = 450,
@@ -645,28 +649,37 @@ export function generateTubularHandle(strokePoints, params = {}) {
   // 2. Convert to [[x, y], ...] flat array format
   const rawPoints = smoothed.map(p => [p.x, p.y])
 
-  // 3. Auto-dimensions based on cup height
-  const baseDims = autoDimensions(cupHeightMm)
+  // 3. User sets desired endpoint height (meters); convert to mm.
+  const handleHeightMm = Math.max(Number(handleHeightM) * 1000.0, MIN_ENDPOINT_SPAN_MM)
 
-  // 4. Normalize to 3D path
+  // 4. Derive scale from endpoint pixel span so drawn proportions are preserved.
+  const endpointSpan01 = Math.abs(rawPoints[rawPoints.length - 1][1] - rawPoints[0][1])
+  const endpointSpanPx = endpointSpan01 * Math.max(imageHeightPx, 1)
+  if (endpointSpanPx <= 1e-6) return null
+  const derivedMmPerPixel = handleHeightMm / endpointSpanPx
+
+  // 5. Auto-dimensions based on handle height
+  const baseDims = autoDimensions(handleHeightMm)
+
+  // 6. Normalize to 3D path
   let pathPoints
   try {
-    pathPoints = normalizePoints(rawPoints, cupHeightMm, baseDims.projectionMm)
+    pathPoints = normalizePoints(rawPoints, imageWidthPx, imageHeightPx, derivedMmPerPixel)
     pathPoints = smoothCenterline3D(pathPoints, smoothLevel)
   } catch (e) {
     return null // e.g., no horizontal variation
   }
 
-  // 5. Resample at equal arc-length steps
+  // 7. Resample at equal arc-length steps
   try {
     pathPoints = resamplePolyline3D(pathPoints, baseDims.resampleStepMm)
   } catch (e) {
     return null // line too short
   }
 
-  // 6. Mechanical design
+  // 8. Mechanical design
   const design = computeMechanicalDesign(
-    pathPoints, rawPoints, cupHeightMm,
+    pathPoints, rawPoints, handleHeightMm,
     cupTopDiameterMm, cupBottomDiameterMm,
     filledWeightG, targetSafetyFactor, baseDims,
   )
@@ -679,7 +692,7 @@ export function generateTubularHandle(strokePoints, params = {}) {
   meshPathPoints[0][0] -= rootEmbedMm
   meshPathPoints[meshPathPoints.length - 1][0] -= rootEmbedMm
 
-  // 7. Build meshes
+  // 9. Build meshes
   const group = new THREE.Group()
 
   const handleMat = new THREE.MeshStandardMaterial({
@@ -706,7 +719,7 @@ export function generateTubularHandle(strokePoints, params = {}) {
   // Three.js scene uses Y-up. Rotate to align.
   group.rotation.x = -Math.PI / 2
 
-  // 8. Strength report
+  // 10. Strength report
   const strengthReport = buildStrengthReport(design)
 
   return { group, strengthReport, pathPoints }
