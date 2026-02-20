@@ -16,7 +16,14 @@ export function exportSTL(meshes, binary = true, filename = 'handle_export.stl')
   // 创建临时场景，放入所有 mesh
   const scene = new THREE.Scene()
   for (const mesh of meshes) {
+    mesh.updateWorldMatrix(true, false)
     const clone = mesh.clone()
+    clone.geometry = mesh.geometry.clone()
+    clone.geometry.applyMatrix4(mesh.matrixWorld)
+    clone.position.set(0, 0, 0)
+    clone.rotation.set(0, 0, 0)
+    clone.scale.set(1, 1, 1)
+    clone.updateMatrix()
     scene.add(clone)
   }
 
