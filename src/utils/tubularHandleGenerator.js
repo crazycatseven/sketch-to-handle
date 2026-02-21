@@ -8,6 +8,7 @@ const MATERIAL_TENSILE_STRESS_PA = 25_000_000
 const ADHESIVE_ALLOWABLE_SHEAR_PA = 180_000
 const DEFAULT_TARGET_SAFETY_FACTOR = 5.0
 const MIN_ENDPOINT_SPAN_MM = 20.0
+const DEFAULT_HANDLE_MODE = 'tubular'
 
 // ─── Vector helpers (flat [x, y, z] arrays) ───
 
@@ -371,6 +372,208 @@ export function computeMechanicalDesign(
  *
  * @returns {THREE.BufferGeometry}
  */
+function clampInt(v, lo, hi) {
+  return Math.min(hi, Math.max(lo, Math.round(v)))
+}
+
+function buildFoldableCrossSectionShape({
+  webWidthMm,
+  sideWallWidthMm,
+  flapWidthMm,
+  hingeBandMm,
+  panelThicknessMm,
+  hingeThicknessMm,
+}) {
+  const tFull = Math.max(0.8, panelThicknessMm)
+  const tHinge = clamp(hingeThicknessMm, 0.55, Math.max(0.6, tFull - 0.2))
+  const halfWeb = webWidthMm * 0.5
+
+  const u0 = -(halfWeb + hingeBandMm + sideWallWidthMm + hingeBandMm + flapWidthMm)
+  const u1 = u0 + flapWidthMm
+  const u2 = u1 + hingeBandMm
+  const u3 = u2 + sideWallWidthMm
+  const u4 = u3 + hingeBandMm
+  const u5 = u4 + webWidthMm
+  const u6 = u5 + hingeBandMm
+  const u7 = u6 + sideWallWidthMm
+  const u8 = u7 + hingeBandMm
+  const u9 = u8 + flapWidthMm
+
+  const points = [
+    [u0, 0],
+    [u0, tFull],
+    [u1, tFull],
+    [u1, tHinge],
+    [u2, tHinge],
+    [u2, tFull],
+    [u3, tFull],
+    [u3, tHinge],
+    [u4, tHinge],
+    [u4, tFull],
+    [u5, tFull],
+    [u5, tHinge],
+    [u6, tHinge],
+    [u6, tFull],
+    [u7, tFull],
+    [u7, tHinge],
+    [u8, tHinge],
+    [u8, tFull],
+    [u9, tFull],
+    [u9, 0],
+  ]
+
+  const shape = new THREE.Shape()
+  shape.moveTo(points[0][0], points[0][1])
+  for (let i = 1; i < points.length; i++) {
+    shape.lineTo(points[i][0], points[i][1])
+  }
+  shape.closePath()
+  return shape
+}
+
+function buildFoldableBlankMesh(pathPoints, foldSpec) {
+  const curvePoints = pathPoints.map(p => new THREE.Vector3(p[0], 0, p[2]))
+  const curve = new THREE.CatmullRomCurve3(curvePoints, false, 'centripetal', 0.5)
+  const profileShape = buildFoldableCrossSectionShape(foldSpec)
+
+  const steps = Math.max(24, Math.min(pathPoints.length * 2, 540))
+  const geo = new THREE.ExtrudeGeometry(profileShape, {
+    steps,
+    bevelEnabled: false,
+    extrudePath: curve,
+  })
+  geo.computeVertexNormals()
+  return geo
+}
+
+function buildFlatPadDiskMesh(endpoint, padRadiusMm, padThicknessMm, radialSegments = 48) {
+  const seg = Math.max(24, radialSegments)
+  const geo = new THREE.CylinderGeometry(padRadiusMm, padRadiusMm, padThicknessMm, seg)
+  geo.translate(endpoint[0], padThicknessMm * 0.5, endpoint[2])
+  return geo
+}
+
+function buildSplitLockClipMesh(innerWidthMm, innerHeightMm, wallMm, clipDepthMm) {
+  const ox0 = -innerWidthMm * 0.5 - wallMm
+  const ox1 = innerWidthMm * 0.5 + wallMm
+  const oy0 = -innerHeightMm * 0.5 - wallMm
+  const oy1 = innerHeightMm * 0.5 + wallMm
+  const ix1 = innerWidthMm * 0.5
+  const iy0 = -innerHeightMm * 0.5
+  const iy1 = innerHeightMm * 0.5
+  const leadIn = Math.min(wallMm * 0.45, innerHeightMm * 0.2)
+
+  const shape = new THREE.Shape()
+  shape.moveTo(ox0, oy0)
+  shape.lineTo(ox1, oy0)
+  shape.lineTo(ox1, oy1)
+  shape.lineTo(ox0, oy1)
+  shape.lineTo(ox0, iy1 - leadIn)
+  shape.lineTo(ix1 - leadIn, iy1 - leadIn)
+  shape.lineTo(ix1, iy1)
+  shape.lineTo(ix1, iy0)
+  shape.lineTo(ix1 - leadIn, iy0 + leadIn)
+  shape.lineTo(ox0, iy0 + leadIn)
+  shape.closePath()
+
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: clipDepthMm,
+    steps: 1,
+    bevelEnabled: false,
+  })
+  geo.translate(0, 0, -clipDepthMm * 0.5)
+  geo.computeVertexNormals()
+  return geo
+}
+
+function buildFoldableAssembly(pathPoints, design) {
+  const panelThicknessMm = clamp(design.gripRadiusMm * 0.52, 2.2, 4.4)
+  const hingeThicknessMm = clamp(panelThicknessMm * 0.42, 0.85, panelThicknessMm * 0.72)
+  const hingeBandMm = clamp(panelThicknessMm * 0.62, 1.2, 2.3)
+  const webWidthMm = Math.max(design.gripRadiusMm * 2.15, 8.5)
+  const sideWallWidthMm = Math.max(design.gripRadiusMm * 1.75, 7.0)
+  const flapWidthMm = Math.max(webWidthMm * 0.58, design.gripRadiusMm * 1.2)
+
+  const foldedOuterWidthMm = webWidthMm + panelThicknessMm * 2.4
+  const foldedOuterHeightMm = sideWallWidthMm + panelThicknessMm * 2.4
+  const clipWallMm = clamp(panelThicknessMm * 0.72, 1.6, 3.0)
+  const clipInnerWidthMm = foldedOuterWidthMm + 0.8
+  const clipInnerHeightMm = foldedOuterHeightMm + 0.8
+  const clipDepthMm = clamp(design.pathLengthMm * 0.1, 8.0, 14.0)
+  const clipCount = clampInt(design.pathLengthMm / 40.0, 2, 4)
+
+  const foldSpec = {
+    webWidthMm,
+    sideWallWidthMm,
+    flapWidthMm,
+    hingeBandMm,
+    panelThicknessMm,
+    hingeThicknessMm,
+    foldedOuterWidthMm,
+    foldedOuterHeightMm,
+    clipWallMm,
+    clipInnerWidthMm,
+    clipInnerHeightMm,
+    clipDepthMm,
+    clipCount,
+  }
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0xE0E0E0, side: THREE.FrontSide, roughness: 0.38, metalness: 0.08,
+  })
+  const clipMat = new THREE.MeshStandardMaterial({
+    color: 0xA8A8A8, side: THREE.FrontSide, roughness: 0.34, metalness: 0.12,
+  })
+
+  const group = new THREE.Group()
+
+  const blankGeo = buildFoldableBlankMesh(pathPoints, foldSpec)
+  group.add(new THREE.Mesh(blankGeo, bodyMat))
+
+  const padRadiusMm = design.padDiameterMm * 0.5
+  const padThicknessMm = Math.max(panelThicknessMm, design.padThicknessMm * 0.72)
+  const endpoints = [pathPoints[0], pathPoints[pathPoints.length - 1]]
+  for (let i = 0; i < endpoints.length; i++) {
+    const padGeo = buildFlatPadDiskMesh(endpoints[i], padRadiusMm, padThicknessMm)
+    group.add(new THREE.Mesh(padGeo, bodyMat))
+  }
+
+  const clipGeo = buildSplitLockClipMesh(
+    clipInnerWidthMm, clipInnerHeightMm, clipWallMm, clipDepthMm
+  )
+
+  const bodyBbox = new THREE.Box3().setFromObject(group)
+  const clipOuterWidthMm = clipInnerWidthMm + clipWallMm * 2.0
+  const clipOuterHeightMm = clipInnerHeightMm + clipWallMm * 2.0
+  const clipX = bodyBbox.max.x + clipOuterWidthMm * 1.25
+  const clipY = clipOuterHeightMm * 0.5 + 0.3
+
+  for (let i = 0; i < clipCount; i++) {
+    const t = (i + 1) / (clipCount + 1)
+    const z = THREE.MathUtils.lerp(bodyBbox.min.z, bodyBbox.max.z, t)
+    const clip = new THREE.Mesh(clipGeo.clone(), clipMat)
+    clip.position.set(clipX, clipY, z)
+    group.add(clip)
+  }
+
+  return { group, foldSpec }
+}
+
+function applyFoldableSafetyPenalty(design, foldSpec) {
+  const hingeRatio = clamp(
+    foldSpec.hingeThicknessMm / Math.max(foldSpec.panelThicknessMm, 1e-6),
+    0.2,
+    1.0
+  )
+  const foldPenalty = clamp(0.72 + hingeRatio * 0.28, 0.58, 0.93)
+  const structuralSf = design.structuralSf * foldPenalty
+  return {
+    ...design,
+    structuralSf,
+    minimumSf: Math.min(structuralSf, design.adhesiveSf),
+  }
+}
+
 export function buildTubeMesh(pathPoints, radiiMm, sections = 40) {
   const n = pathPoints.length
   if (n < 2) throw new Error('Need at least 2 points for tube')
@@ -637,6 +840,7 @@ export function generateTubularHandle(strokePoints, params = {}) {
   const {
     imageWidthPx = 1000,
     imageHeightPx = 1000,
+    handleMode = DEFAULT_HANDLE_MODE,
     handleHeightM = 0.12,
     handleWidthScale = 1.0,
     padWidthScale = 1.0,
@@ -691,6 +895,30 @@ export function generateTubularHandle(strokePoints, params = {}) {
     filledWeightG, targetSafetyFactor, baseDims,
     handleWidthScale, padWidthScale,
   )
+
+  const mode = handleMode === 'foldable' ? 'foldable' : DEFAULT_HANDLE_MODE
+  if (mode === 'foldable') {
+    const { group, foldSpec } = buildFoldableAssembly(pathPoints, design)
+    group.rotation.x = -Math.PI / 2
+    const foldDesign = applyFoldableSafetyPenalty(design, foldSpec)
+    const foldNotes = [
+      ...foldDesign.notes,
+      'Foldable mode: print flat, gently warm hinge lines, then fold once.',
+      `Lock with ${foldSpec.clipCount} included clips, then epoxy the top seam for permanent fixation.`,
+      'PETG or PP is recommended. PLA is not ideal for one-time hinge bending.',
+    ]
+    const r = (v) => Math.round(v * 100) / 100
+    const strengthReport = {
+      ...buildStrengthReport({ ...foldDesign, notes: foldNotes }),
+      handleMode: 'foldable',
+      foldPanelThicknessMm: r(foldSpec.panelThicknessMm),
+      foldHingeThicknessMm: r(foldSpec.hingeThicknessMm),
+      foldBodyWidthMm: r(foldSpec.foldedOuterWidthMm),
+      foldBodyHeightMm: r(foldSpec.foldedOuterHeightMm),
+      foldClipCount: foldSpec.clipCount,
+    }
+    return { group, strengthReport, pathPoints }
+  }
 
   // Mesh-only adjustment:
   // Embed tube roots slightly into pads so STL has real overlap volume

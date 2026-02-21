@@ -8,6 +8,7 @@ export default function StrengthReport() {
   const curvePoints = useStore(s => s.curvePoints)
 
   const smoothLevel = useStore(s => s.smoothLevel)
+  const handleMode = useStore(s => s.handleMode)
   const handleHeightM = useStore(s => s.handleHeightM)
   const handleWidthScale = useStore(s => s.handleWidthScale)
   const padWidthScale = useStore(s => s.padWidthScale)
@@ -27,6 +28,7 @@ export default function StrengthReport() {
       const result = generateTubularHandle(inputStroke, {
         imageWidthPx: image?.width || 1000,
         imageHeightPx: image?.height || 1000,
+        handleMode,
         handleHeightM,
         handleWidthScale,
         padWidthScale,
@@ -43,6 +45,7 @@ export default function StrengthReport() {
   }, [
     inputStroke,
     image,
+    handleMode,
     handleHeightM,
     handleWidthScale,
     padWidthScale,
@@ -75,6 +78,7 @@ export default function StrengthReport() {
   }
 
   const pass = report.pass
+  const isFoldable = report.handleMode === 'foldable'
 
   return (
     <div className="strength-report">
@@ -99,7 +103,7 @@ export default function StrengthReport() {
         </tbody>
       </table>
 
-      <h4>Handle Tube</h4>
+      <h4>{isFoldable ? 'Handle Body' : 'Handle Tube'}</h4>
       <table className="strength-table">
         <tbody>
           <Row label="Grip diameter" value={`${report.tubeGripDiameterMm} mm`} />
@@ -109,6 +113,21 @@ export default function StrengthReport() {
           <Row label="Endpoint span" value={`${report.endpointSpanMm} mm`} />
         </tbody>
       </table>
+
+      {isFoldable && (
+        <>
+          <h4>Foldable Build</h4>
+          <table className="strength-table">
+            <tbody>
+              <Row label="Panel thickness" value={`${report.foldPanelThicknessMm} mm`} />
+              <Row label="Hinge thickness" value={`${report.foldHingeThicknessMm} mm`} />
+              <Row label="Folded width" value={`${report.foldBodyWidthMm} mm`} />
+              <Row label="Folded height" value={`${report.foldBodyHeightMm} mm`} />
+              <Row label="Lock clips" value={`${report.foldClipCount}`} />
+            </tbody>
+          </table>
+        </>
+      )}
 
       <h4>Adhesive Pads</h4>
       <table className="strength-table">

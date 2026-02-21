@@ -34,6 +34,8 @@ const useStore = create((set) => ({
   setSmoothLevel: (v) => set({ smoothLevel: v }),
 
   // Physical parameters
+  handleMode: 'tubular',
+  setHandleMode: (v) => set({ handleMode: v }),
   handleHeightM: 0.12,
   setHandleHeightM: (v) => set({ handleHeightM: v }),
   handleWidthScale: 1.0,

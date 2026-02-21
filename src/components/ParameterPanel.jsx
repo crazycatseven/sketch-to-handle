@@ -1,6 +1,8 @@
 import useStore from '../store'
 
 export default function ParameterPanel() {
+  const handleMode = useStore(s => s.handleMode)
+  const setHandleMode = useStore(s => s.setHandleMode)
   const handleHeightM = useStore(s => s.handleHeightM)
   const setHandleHeightM = useStore(s => s.setHandleHeightM)
   const handleWidthScale = useStore(s => s.handleWidthScale)
@@ -32,6 +34,40 @@ export default function ParameterPanel() {
   return (
     <div className="param-group">
       <h3>Parameters</h3>
+      <div className="param-row" style={{ alignItems: 'center' }}>
+        <label>Mode</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => setHandleMode('tubular')}
+            style={{
+              padding: '4px 8px',
+              fontSize: 11,
+              border: '1px solid #bdbdbd',
+              borderRadius: 6,
+              background: handleMode === 'tubular' ? '#00BCD4' : '#fff',
+              color: handleMode === 'tubular' ? '#fff' : '#333',
+            }}
+          >
+            Tubular
+          </button>
+          <button
+            type="button"
+            onClick={() => setHandleMode('foldable')}
+            style={{
+              padding: '4px 8px',
+              fontSize: 11,
+              border: '1px solid #bdbdbd',
+              borderRadius: 6,
+              background: handleMode === 'foldable' ? '#00BCD4' : '#fff',
+              color: handleMode === 'foldable' ? '#fff' : '#333',
+            }}
+          >
+            Foldable
+          </button>
+        </div>
+        <span className="param-val">{handleMode}</span>
+      </div>
       {sliders.map(s => (
         <div className="param-row" key={s.label}>
           <label>{s.label}</label>

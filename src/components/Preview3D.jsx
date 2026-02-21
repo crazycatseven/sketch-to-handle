@@ -10,6 +10,7 @@ function HandleScene() {
   const curvePoints = useStore(s => s.curvePoints)
 
   const smoothLevel = useStore(s => s.smoothLevel)
+  const handleMode = useStore(s => s.handleMode)
   const handleHeightM = useStore(s => s.handleHeightM)
   const handleWidthScale = useStore(s => s.handleWidthScale)
   const padWidthScale = useStore(s => s.padWidthScale)
@@ -29,6 +30,7 @@ function HandleScene() {
       return generateTubularHandle(inputStroke, {
         imageWidthPx: image?.width || 1000,
         imageHeightPx: image?.height || 1000,
+        handleMode,
         handleHeightM,
         handleWidthScale,
         padWidthScale,
@@ -45,6 +47,7 @@ function HandleScene() {
   }, [
     inputStroke,
     image,
+    handleMode,
     handleHeightM,
     handleWidthScale,
     padWidthScale,
