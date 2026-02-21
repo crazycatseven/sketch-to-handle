@@ -372,10 +372,6 @@ export function computeMechanicalDesign(
  *
  * @returns {THREE.BufferGeometry}
  */
-function clampInt(v, lo, hi) {
-  return Math.min(hi, Math.max(lo, Math.round(v)))
-}
-
 function buildFoldableCrossSectionShape({
   webWidthMm,
   sideWallWidthMm,
@@ -385,9 +381,11 @@ function buildFoldableCrossSectionShape({
   hingeThicknessMm,
 }) {
   const tFull = Math.max(0.8, panelThicknessMm)
-  const tHinge = clamp(hingeThicknessMm, 0.55, Math.max(0.6, tFull - 0.2))
+  // Living hinge: must be genuinely thin (0.3-0.5mm) to allow folding
+  const tHinge = clamp(hingeThicknessMm, 0.25, 0.5)
   const halfWeb = webWidthMm * 0.5
 
+  // Layout: flap | hinge | sideWall | hinge | web | hinge | sideWall | hinge | flap
   const u0 = -(halfWeb + hingeBandMm + sideWallWidthMm + hingeBandMm + flapWidthMm)
   const u1 = u0 + flapWidthMm
   const u2 = u1 + hingeBandMm
@@ -399,11 +397,12 @@ function buildFoldableCrossSectionShape({
   const u8 = u7 + hingeBandMm
   const u9 = u8 + flapWidthMm
 
+  // Bottom-aligned: panels sit on y=0, hinges are notched from the top
   const points = [
     [u0, 0],
     [u0, tFull],
     [u1, tFull],
-    [u1, tHinge],
+    [u1, tHinge],    // hinge notch (drop to thin)
     [u2, tHinge],
     [u2, tFull],
     [u3, tFull],
@@ -453,54 +452,19 @@ function buildFlatPadDiskMesh(endpoint, padRadiusMm, padThicknessMm, radialSegme
   return geo
 }
 
-function buildSplitLockClipMesh(innerWidthMm, innerHeightMm, wallMm, clipDepthMm) {
-  const ox0 = -innerWidthMm * 0.5 - wallMm
-  const ox1 = innerWidthMm * 0.5 + wallMm
-  const oy0 = -innerHeightMm * 0.5 - wallMm
-  const oy1 = innerHeightMm * 0.5 + wallMm
-  const ix1 = innerWidthMm * 0.5
-  const iy0 = -innerHeightMm * 0.5
-  const iy1 = innerHeightMm * 0.5
-  const leadIn = Math.min(wallMm * 0.45, innerHeightMm * 0.2)
-
-  const shape = new THREE.Shape()
-  shape.moveTo(ox0, oy0)
-  shape.lineTo(ox1, oy0)
-  shape.lineTo(ox1, oy1)
-  shape.lineTo(ox0, oy1)
-  shape.lineTo(ox0, iy1 - leadIn)
-  shape.lineTo(ix1 - leadIn, iy1 - leadIn)
-  shape.lineTo(ix1, iy1)
-  shape.lineTo(ix1, iy0)
-  shape.lineTo(ix1 - leadIn, iy0 + leadIn)
-  shape.lineTo(ox0, iy0 + leadIn)
-  shape.closePath()
-
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: clipDepthMm,
-    steps: 1,
-    bevelEnabled: false,
-  })
-  geo.translate(0, 0, -clipDepthMm * 0.5)
-  geo.computeVertexNormals()
-  return geo
-}
-
 function buildFoldableAssembly(pathPoints, design) {
-  const panelThicknessMm = clamp(design.gripRadiusMm * 0.52, 2.2, 4.4)
-  const hingeThicknessMm = clamp(panelThicknessMm * 0.42, 0.85, panelThicknessMm * 0.72)
-  const hingeBandMm = clamp(panelThicknessMm * 0.62, 1.2, 2.3)
-  const webWidthMm = Math.max(design.gripRadiusMm * 2.15, 8.5)
-  const sideWallWidthMm = Math.max(design.gripRadiusMm * 1.75, 7.0)
-  const flapWidthMm = Math.max(webWidthMm * 0.58, design.gripRadiusMm * 1.2)
+  // Thinner panels for realistic folding
+  const panelThicknessMm = clamp(design.gripRadiusMm * 0.35, 1.5, 2.5)
+  // Living hinge: 0.3-0.45mm is the sweet spot for PETG/PP
+  const hingeThicknessMm = clamp(panelThicknessMm * 0.18, 0.3, 0.45)
+  // Wider hinge band = easier to bend
+  const hingeBandMm = clamp(panelThicknessMm * 1.2, 2.0, 4.0)
+  const webWidthMm = Math.max(design.gripRadiusMm * 2.0, 8.0)
+  const sideWallWidthMm = Math.max(design.gripRadiusMm * 1.6, 6.0)
+  const flapWidthMm = Math.max(webWidthMm * 0.5, design.gripRadiusMm * 1.0)
 
-  const foldedOuterWidthMm = webWidthMm + panelThicknessMm * 2.4
-  const foldedOuterHeightMm = sideWallWidthMm + panelThicknessMm * 2.4
-  const clipWallMm = clamp(panelThicknessMm * 0.72, 1.6, 3.0)
-  const clipInnerWidthMm = foldedOuterWidthMm + 0.8
-  const clipInnerHeightMm = foldedOuterHeightMm + 0.8
-  const clipDepthMm = clamp(design.pathLengthMm * 0.1, 8.0, 14.0)
-  const clipCount = clampInt(design.pathLengthMm / 40.0, 2, 4)
+  const foldedOuterWidthMm = webWidthMm + panelThicknessMm * 2
+  const foldedOuterHeightMm = sideWallWidthMm + panelThicknessMm * 2
 
   const foldSpec = {
     webWidthMm,
@@ -511,18 +475,10 @@ function buildFoldableAssembly(pathPoints, design) {
     hingeThicknessMm,
     foldedOuterWidthMm,
     foldedOuterHeightMm,
-    clipWallMm,
-    clipInnerWidthMm,
-    clipInnerHeightMm,
-    clipDepthMm,
-    clipCount,
   }
 
   const bodyMat = new THREE.MeshStandardMaterial({
     color: 0xE0E0E0, side: THREE.FrontSide, roughness: 0.38, metalness: 0.08,
-  })
-  const clipMat = new THREE.MeshStandardMaterial({
-    color: 0xA8A8A8, side: THREE.FrontSide, roughness: 0.34, metalness: 0.12,
   })
 
   const group = new THREE.Group()
@@ -538,34 +494,17 @@ function buildFoldableAssembly(pathPoints, design) {
     group.add(new THREE.Mesh(padGeo, bodyMat))
   }
 
-  const clipGeo = buildSplitLockClipMesh(
-    clipInnerWidthMm, clipInnerHeightMm, clipWallMm, clipDepthMm
-  )
-
-  const bodyBbox = new THREE.Box3().setFromObject(group)
-  const clipOuterWidthMm = clipInnerWidthMm + clipWallMm * 2.0
-  const clipOuterHeightMm = clipInnerHeightMm + clipWallMm * 2.0
-  const clipX = bodyBbox.max.x + clipOuterWidthMm * 1.25
-  const clipY = clipOuterHeightMm * 0.5 + 0.3
-
-  for (let i = 0; i < clipCount; i++) {
-    const t = (i + 1) / (clipCount + 1)
-    const z = THREE.MathUtils.lerp(bodyBbox.min.z, bodyBbox.max.z, t)
-    const clip = new THREE.Mesh(clipGeo.clone(), clipMat)
-    clip.position.set(clipX, clipY, z)
-    group.add(clip)
-  }
-
   return { group, foldSpec }
 }
 
 function applyFoldableSafetyPenalty(design, foldSpec) {
   const hingeRatio = clamp(
     foldSpec.hingeThicknessMm / Math.max(foldSpec.panelThicknessMm, 1e-6),
-    0.2,
+    0.1,
     1.0
   )
-  const foldPenalty = clamp(0.72 + hingeRatio * 0.28, 0.58, 0.93)
+  // Thinner hinges = bigger penalty
+  const foldPenalty = clamp(0.45 + hingeRatio * 0.45, 0.35, 0.85)
   const structuralSf = design.structuralSf * foldPenalty
   return {
     ...design,
@@ -903,9 +842,9 @@ export function generateTubularHandle(strokePoints, params = {}) {
     const foldDesign = applyFoldableSafetyPenalty(design, foldSpec)
     const foldNotes = [
       ...foldDesign.notes,
-      'Foldable mode: print flat, gently warm hinge lines, then fold once.',
-      `Lock with ${foldSpec.clipCount} included clips, then epoxy the top seam for permanent fixation.`,
-      'PETG or PP is recommended. PLA is not ideal for one-time hinge bending.',
+      'Foldable mode: print flat, heat hinge lines with heat gun, then fold into shape.',
+      'Seal the top seam with epoxy or cyanoacrylate for permanent fixation.',
+      'PETG or PP recommended. PLA hinges will crack.',
     ]
     const r = (v) => Math.round(v * 100) / 100
     const strengthReport = {
@@ -915,7 +854,7 @@ export function generateTubularHandle(strokePoints, params = {}) {
       foldHingeThicknessMm: r(foldSpec.hingeThicknessMm),
       foldBodyWidthMm: r(foldSpec.foldedOuterWidthMm),
       foldBodyHeightMm: r(foldSpec.foldedOuterHeightMm),
-      foldClipCount: foldSpec.clipCount,
+      foldHingeBandMm: r(foldSpec.hingeBandMm),
     }
     return { group, strengthReport, pathPoints }
   }

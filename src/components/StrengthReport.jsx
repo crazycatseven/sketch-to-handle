@@ -123,7 +123,7 @@ export default function StrengthReport() {
               <Row label="Hinge thickness" value={`${report.foldHingeThicknessMm} mm`} />
               <Row label="Folded width" value={`${report.foldBodyWidthMm} mm`} />
               <Row label="Folded height" value={`${report.foldBodyHeightMm} mm`} />
-              <Row label="Lock clips" value={`${report.foldClipCount}`} />
+              <Row label="Hinge band" value={`${report.foldHingeBandMm} mm`} />
             </tbody>
           </table>
         </>
